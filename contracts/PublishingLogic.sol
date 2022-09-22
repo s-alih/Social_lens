@@ -202,7 +202,7 @@ library PublishingLogic {
             revert Errors.PublicationDoesNotExist();
         }
         // Ensure the pointed publication is not the comment being created
-        if(vars.profileId = vars.profileIdPointed && vars.pubIdPointed == pubId)
+        if(vars.profileId == vars.profileIdPointed && vars.pubIdPointed == pubId)
             revert Errors.CannotCommentOnSelf();
         
         _pubByIdByProfile[vars.profileId][pubId].contentURI = vars.contentURI;

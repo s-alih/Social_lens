@@ -383,6 +383,742 @@ contract LensHub is
         _setFollowNFTURI(vars.profileId, vars.followNFTURI);
     }
 
+    /// @inheritdoc ILensHub
+    function post(DataTypes.PostData calldata vars)
+        external
+        override
+        whenPublishingEnabled
+        returns (uint256)
+    {
+        _validateCallerIsProfileOwnerOrDispatcher(vars.profileId);
+        return
+            _createPost(
+                vars.profileId,
+                vars.contentURI,
+                vars.collectModule,
+                vars.collectModuleInitData,
+                vars.referenceModule,
+                vars.referenceModuleInitData
+            );
+    }
+
+    unction postWithSig(DataTypes.PostWithSigData calldata vars)
+        external
+        override
+        whenPublishingEnabled
+        returns (uint256)
+    {
+        address owner = ownerOf(vars.profileId);
+        unchecked {
+            _validateRecoveredAddress(
+                _calculateDigest(
+                    keccak256(
+                        abi.encode(
+                            POST_WITH_SIG_TYPEHASH,
+                            vars.profileId,
+                            keccak256(bytes(vars.contentURI)),
+                            vars.collectModule,
+                            keccak256(vars.collectModuleInitData),
+                            vars.referenceModule,
+                            keccak256(vars.referenceModuleInitData),
+                            sigNonces[owner]++,
+                            vars.sig.deadline
+                        )
+                    )
+                ),
+                owner,
+                vars.sig
+            );
+        }
+        return
+            _createPost(
+                vars.profileId,
+                vars.contentURI,
+                vars.collectModule,
+                vars.collectModuleInitData,
+                vars.referenceModule,
+                vars.referenceModuleInitData
+            );
+    }
+
+     /// @inheritdoc ILensHub
+    function comment(DataTypes.CommentData calldata vars)
+        external
+        override
+        whenPublishingEnabled
+        returns (uint256)
+    {
+        _validateCallerIsProfileOwnerOrDispatcher(vars.profileId);
+        return _createComment(vars);
+    }
+
+     /// @inheritdoc ILensHub
+    function commentWithSig(DataTypes.CommentWithSigData calldata vars)
+        external
+        override
+        whenPublishingEnabled
+        returns (uint256)
+    {
+        address owner = ownerOf(vars.profileId);
+        unchecked {
+            _validateRecoveredAddress(
+                _calculateDigest(
+                    keccak256(
+                        abi.encode(
+                            COMMENT_WITH_SIG_TYPEHASH,
+                            vars.profileId,
+                            keccak256(bytes(vars.contentURI)),
+                            vars.profileIdPointed,
+                            vars.pubIdPointed,
+                            keccak256(vars.referenceModuleData),
+                            vars.collectModule,
+                            keccak256(vars.collectModuleInitData),
+                            vars.referenceModule,
+                            keccak256(vars.referenceModuleInitData),
+                            sigNonces[owner]++,
+                            vars.sig.deadline
+                        )
+                    )
+                ),
+                owner,
+                vars.sig
+            );
+        }
+        return
+            _createComment(
+                DataTypes.CommentData(
+                    vars.profileId,
+                    vars.contentURI,
+                    vars.profileIdPointed,
+                    vars.pubIdPointed,
+                    vars.referenceModuleData,
+                    vars.collectModule,
+                    vars.collectModuleInitData,
+                    vars.referenceModule,
+                    vars.referenceModuleInitData
+                )
+            );
+    }
+
+    /// @inheritdoc ILensHub
+    function mirror(DataTypes.MirrorData calldata vars)
+        external
+        override
+        whenPublishingEnabled
+        returns (uint256)
+    {
+        _validateCallerIsProfileOwnerOrDispatcher(vars.profileId);
+        return _createMirror(vars);
+    }
+
+    /// @inheritdoc ILensHub
+    function mirrorWithSig(DataTypes.MirrorWithSigData calldata vars)
+        external
+        override
+        whenPublishingEnabled
+        returns (uint256)
+    {
+        address owner = ownerOf(vars.profileId);
+        unchecked {
+            _validateRecoveredAddress(
+                _calculateDigest(
+                    keccak256(
+                        abi.encode(
+                            MIRROR_WITH_SIG_TYPEHASH,
+                            vars.profileId,
+                            vars.profileIdPointed,
+                            vars.pubIdPointed,
+                            keccak256(vars.referenceModuleData),
+                            vars.referenceModule,
+                            keccak256(vars.referenceModuleInitData),
+                            sigNonces[owner]++,
+                            vars.sig.deadline
+                        )
+                    )
+                ),
+                owner,
+                vars.sig
+            );
+        }
+        return
+            _createMirror(
+                DataTypes.MirrorData(
+                    vars.profileId,
+                    vars.profileIdPointed,
+                    vars.pubIdPointed,
+                    vars.referenceModuleData,
+                    vars.referenceModule,
+                    vars.referenceModuleInitData
+                )
+            );
+    }
+
+    /**
+     * @notice Burns a profile, this maintain the profile data struct, but deletes 
+     * handle hash to profile ID mapping value.
+     * 
+     * NOTE: This overrride the LensNFTBase contract's `burn()` function and calls it to fully burn 
+     * the NFT.
+     */
+
+    function burn(uint256 tokenId) public override whenNotPaused{
+        super.burn(tokenId);
+        _clearHandleHash(tokenId);
+    }
+
+    /**
+     * @notice Burns a profile with a signature, this maintains the profile data struct, but deletes the
+     * handle hash to profile ID mapping value.
+     *
+     * NOTE: This overrides the LensNFTBase contract's `burnWithSig()` function and calls it to fully burn
+     * the NFT.
+     */
+    function burnWithSig(
+        uint256 tokenId,
+        DataTypes.EIP712Signature calldata sig
+    ) public override whenNotPaused {
+        super.burnWithSig(tokenId, sig);
+        _clearHandleHash(tokenId);
+    }
+
+    /// ******************************************
+    /// ******PROFILE INTERACTION FUNCTION********
+    /// ******************************************
+
+    /// @inheritdoc ILensHub
+    function follow(uint256[] calldata profileIds, bytes[] calldata datas)
+    external
+    override
+    whenNotPaused
+    returns(uint256[] memory)
+    {
+        return 
+        InteractionLogic.follow(
+            msg.sender,
+            profileIds,
+            datas,
+            _profileById,
+            _profileIdByHandleHash
+        );
+    }
+
+    /// @inheritdoc ILensHub
+    function followWithSig(DataTypes.FollowWithSigData calldata vars)
+    external
+    override
+    whenNotPaused
+    returns(uint256[] memory)
+    {
+        uint256 dataLength = vars.datas.length;
+         bytes32[] memory dataHashes = new bytes32[](dataLength);
+        for(uint256 i = 0; i<dataLength;){
+            dataHashes[i] = keccak256(vars.datas[i]);
+            unchecked {
+                ++i;
+            }
+        }
+           }
+        unchecked {
+            _validateRecoveredAddress(
+                _calculateDigest(
+                    keccak256(
+                        abi.encode(
+                            FOLLOW_WITH_SIG_TYPEHASH,
+                            keccak256(abi.encodePacked(vars.profileIds)),
+                            keccak256(abi.encodePacked(dataHashes)),
+                            sigNonces[vars.follower]++,
+                            vars.sig.deadline
+                        )
+                    )
+                ),
+                vars.follower,
+                vars.sig
+            );
+        }
+         return
+            InteractionLogic.follow(
+                vars.follower,
+                vars.profileIds,
+                vars.datas,
+                _profileById,
+                _profileIdByHandleHash
+            );
+    }
+
+     /// @inheritdoc ILensHub
+    function collect(
+        uint256 profileId,
+        uint256 pubId,
+        bytes calldata data
+    ) external override whenNotPaused returns (uint256) {
+        return
+            InteractionLogic.collect(
+                msg.sender,
+                profileId,
+                pubId,
+                data,
+                COLLECT_NFT_IMPL,
+                _pubByIdByProfile,
+                _profileById
+            );
+    }      
+
+     /// @inheritdoc ILensHub
+    function emitFollowNFTTransferEvent(
+        uint256 profileId,
+        uint256 followNFTId,
+        address from,
+        address to,
+    ) external override{
+        address expectedFollowNFT = _profileById[profileId].followNFT;
+        if(msg.sender != expectedFollowNFT) revert Errors.CallerNotFollowNFT();
+        emit Events.FollowNFTTransferred(
+            profileId,
+            followNFTId,
+            from,
+            to,
+            block.timestamp
+        );
+    }
+
+
+    /// @inheritcdoc ILensHub
+    function emitCollectNFTTransfered(
+        uint256 profileId,
+        uint256 pubId,
+        uint256 collectNFTId,
+        address from,
+        address to,
+    )external override{
+        address expectedCollectNFT = _pubByIdByProfile[profileId][pubId].collectNFT;
+        if(msg.sender !=  expectedCollectNFT)
+            revert Errors.CallerNotCollectNFT();
+        emit Events.CollectNFTTransferred(
+            profileId,
+            pubId,
+            collectNFTId,
+            from,
+            to,
+            block.timestamp
+        )
+    }
+
+    /// *********************************
+    /// *****EXTERNAL VIEW FUNCTIONS*****
+    /// *********************************
+
+    function isProfileCreatorWhitelisted(address profileCreator)external view returns(bool){
+        return _profileCreatorWhitelisted[profileCreator];
+    }   
+
+     /// @inheritdoc ILensHub
+    function defaultProfile(address wallet)
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return _defaultProfileByAddress[wallet];
+    }       
+
+     /// @inheritdoc ILensHub
+    function isFollowModuleWhitelisted(address followModule)
+        external
+        view
+        override
+        returns (bool)
+    {
+        return _followModuleWhitelisted[followModule];
+    }               
+
+       /// @inheritdoc ILensHub
+    function isReferenceModuleWhitelisted(address referenceModule)
+        external
+        view
+        override
+        returns (bool)
+    {
+        return _referenceModuleWhitelisted[referenceModule];
+    }
+
+     /// @inheritdoc ILensHub
+    function isCollectModuleWhitelisted(address collectModule)
+        external
+        view
+        override
+        returns (bool)
+    {
+        return _collectModuleWhitelisted[collectModule];
+    }
+
+    /// @inheritdoc ILensHub
+    function getGovernance() external view override returns (address) {
+        return _governance;
+    }
+
+     /// @inheritdoc ILensHub
+    function getDispatcher(uint256 profileId)
+        external
+        view
+        override
+        returns (address)
+    {
+        return _dispatcherByProfile[profileId];
+    }
+
+    /// @inheritdoc ILensHub
+    function getPubCount(uint256 profileId)
+    external
+    view 
+    override
+    returns(uint256){
+
+        return _profileById[profileId].pubCount;
+    }
+
+     /// @inheritdoc ILensHub
+    function getFollowNFT(uint256 profileId)
+        external
+        view
+        override
+        returns (address)
+    {
+        return _profileById[profileId].followNFT;
+    }
+
+    /// @inheritdoc ILensHub
+    function getFollowNFTURI(uint256 profileId)
+        external
+        view
+        override
+        returns (string memory)
+    {
+        return _profileById[profileId].followNFTURI;
+    }
+
+    /// @inheritdoc ILensHub
+    function getCollectNFT(uint256 profileId, uint256 pubId)
+        external
+        view
+        override
+        returns (address)
+    {
+        return _pubByIdByProfile[profileId][pubId].collectNFT;
+    }
+
+    /// @inheritdoc ILensHub
+    function getFollowModule(uint256 profileId)
+        external
+        view
+        override
+        returns (address)
+    {
+        return _profileById[profileId].followModule;
+    }
+
+     /// @inheritdoc ILensHub
+    function getCollectModule(uint256 profileId, uint256 pubId)
+        external
+        view
+        override
+        returns (address)
+    {
+        return _pubByIdByProfile[profileId][pubId].collectModule;
+    }
+
+     /// @inheritdoc ILensHub
+    function getReferenceModule(uint256 profileId, uint256 pubId)
+        external
+        view
+        override
+        returns (address)
+    {
+        return _pubByIdByProfile[profileId][pubId].referenceModule;
+    }
+
+     /// @inheritdoc ILensHub
+    function getHandle(uint256 profileId)
+        external
+        view
+        override
+        returns (string memory)
+    {
+        return _profileById[profileId].handle;
+    }
+
+    /// @inheritdoc ILensHub
+    function getPubPointer(uint256 profileId, uint256 pubId)
+        external
+        view
+        override
+        returns (uint256, uint256)
+    {
+        uint256 profileIdPointed = _pubByIdByProfile[profileId][pubId]
+            .profileIdPointed;
+        uint256 pubIdPointed = _pubByIdByProfile[profileId][pubId].pubIdPointed;
+        return (profileIdPointed, pubIdPointed);
+    }
+
+
+     /// @inheritdoc ILensHub
+    function getContentURI(uint256 profileId, uint256 pubId)
+        external
+        view
+        override
+        returns (string memory)
+    {
+        (uint256 rootProfileId, uint256 rootPubId, ) = Helpers
+            .getPointedIfMirror(profileId, pubId, _pubByIdByProfile);
+        return _pubByIdByProfile[rootProfileId][rootPubId].contentURI;
+    }
+
+
+    /// @inheritdoc ILensHub
+    function getProfileByHandle(string calldata handle)
+    external
+    view 
+    override
+    returns(uint256)
+    {
+        bytes32 handleHash = keccak256(bytes(handle));
+        return _profileIdByHandleHash[handleHash];
+    }
+
+    /// @inheritdoc ILensHub
+    function getProfile(uint256 profileId)
+        external
+        view
+        override
+        returns (DataTypes.ProfileStruct memory)
+    {
+        return _profileById[profileId];
+    }
+
+
+    /// @inheritdoc ILensHub
+    function getPub(uint256 profileId, uint256 pubId)
+        external
+        view
+        override
+        returns (DataTypes.PublicationStruct memory)
+    {
+        return _pubByIdByProfile[profileId][pubId];
+    }
+
+
+    /// @inheritdoc ILensHub
+    function getPubType(uint256 profileId, uint256 pubId)
+    external
+    view 
+    override
+    returns(DataTypes.PubType)
+    if(
+        if(pubId == 0 || _profileById[profileId].pubCount < pubId){
+            return DataTypes.PubType.Nonexistent;
+
+        }else if(
+            _pubByIdByProfile[profileId][pubId].collectModule == address(0)
+        ){
+            return DataTypes.PubType.Mirror;
+        }else if(_pubByIdByProfile[profileId][pubId].profileIdPointed  == 0){
+            return DataTypes.PubType.Post;
+
+        }else {
+            return DataTypes.PubType.Comment;
+        }
+    )
+
+    /**
+     * @dev Override the ERC721 function to return associated URI with a given profile.
+     */
+
+    function tokenURI(uint256 tokenId)
+    public
+    view 
+    override
+    returns(string memory){
+        address followNFT = _profileById[tokenId].followNFT;
+        ProfileTokenURILogic.getProfileTokenURI(
+            tokenId,
+            followNFT == address(0)
+            ?0
+            : IERC721Enumerable(followNFT).totalSupply(),
+            ownerOf(tokendId),
+            _profileById[tokenId].handle,
+            _profileById[tokenId].imageURI
+        )
+    }
+
+
+    /// @inheritdoc ILensHub
+    function getFollowNFTImpl() external view override returns (address) {
+        return FOLLOW_NFT_IMPL;
+    }
+
+    /// @inheritdoc ILensHub
+    function getCollectNFTImpl() external view override returns (address) {
+        return COLLECT_NFT_IMPL;
+    }
+
+
+    /// ****************************
+    /// *****INTERNAL FUNCTIONS*****
+    /// ****************************
+
+   function _setGovernance(address newGovernance) internal {
+        address prevGovernance = _governance;
+        _governance = newGovernance;
+        emit Events.GovernanceSet(
+            msg.sender,
+            prevGovernance,
+            newGovernance,
+            block.timestamp
+        );
+    }
+
+     function _createPost(
+        uint256 profileId,
+        string memory contentURI,
+        address collectModule,
+        bytes memory collectModuleData,
+        address referenceModule,
+        bytes memory referenceModuleData
+    ) internal returns (uint256) {
+        unchecked {
+            uint256 pubId = ++_profileById[profileId].pubCount;
+            PublishingLogic.createPost(
+                profileId,
+                contentURI,
+                collectModule,
+                collectModuleData,
+                referenceModule,
+                referenceModuleData,
+                pubId,
+                _pubByIdByProfile,
+                _collectModuleWhitelisted,
+                _referenceModuleWhitelisted
+            );
+            return pubId;
+        }
+    }
+
+    /**
+     * If the profile ID is zero, this is quivalent of "unsetting" a default profile.
+     * Note that the wallet address should either be the message sender or validate via signature
+     * prior to this function call
+     */
+
+    function _setDefaultProfile(address wallet, uint256 profileId) internal {
+        if(profileId > 0 && wallet != ownerOf(profileId))
+            revert Errors.NotProfileOwner();
+        _defaultProfileByAddress[wallet] = profileId;
+
+        emit Events.DefaultProfileSet(wallet, profileId, block.timestamp);
+    }
+
+    function createComment(DataTypes.CommentData memory vars)
+    internal
+    returns(uint256){
+        unchecked {
+            uint256 pubId = ++_profileById[vars.profileId].pubCount;
+            PublishingLogic.createComment(
+                vars,
+                pubId,
+                _profileById,
+                _pubByIdByProfile,
+                _collectModuleWhitelisted,
+                _referenceModuleWhitelisted
+            );
+            return pubId;
+        }
+    }
+
+
+    function _createMirror(DataTypes.MirrorData memory vars)
+    internal
+    returns (uint256)
+    {
+        unchecked {
+            uint256 pubId = ++_profileById[vars.profileId].pubCount;
+            PublishingLogic.createMirror(
+                vars,
+                pubId,
+                _pubByIdByProfile,
+                _referenceModuleWhitelisted
+            );
+            return pubId;
+        }
+    }
+
+    function _setDispatcher(uint256 profileId, address dispatcher) internal {
+        _dispatcherByProfile[profileId] = dispatcher;
+        emit Events.DispatcherSet(profileId, dispatcher, block.timestamp);
+    }
+
+    function _setProfileImageURI(uint256 profileId, string calldata imageURI)
+        internal
+    {
+        if (bytes(imageURI).length > Constants.MAX_PROFILE_IMAGE_URI_LENGTH)
+            revert Errors.ProfileImageURILengthInvalid();
+        _profileById[profileId].imageURI = imageURI;
+        emit Events.ProfileImageURISet(profileId, imageURI, block.timestamp);
+    }
+
+    function _setFollowNFTURI(uint256 profileId, string calldata followNFTURI)
+        internal
+    {
+        _profileById[profileId].followNFTURI = followNFTURI;
+        emit Events.FollowNFTURISet(profileId, followNFTURI, block.timestamp);
+    }
+
+
+    function _clearHandleHash(uint256 profileId) internal {
+        bytes32 handleHash = keccak256(bytes(_profileById[profileId].handle));
+        _profileIdByHandleHash[handleHash] = 0;
+    }
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal override whenNotPaused {
+        if (_dispatcherByProfile[tokenId] != address(0)) {
+            _setDispatcher(tokenId, address(0));
+        }
+
+        if (_defaultProfileByAddress[from] == tokenId) {
+            _defaultProfileByAddress[from] = 0;
+        }
+
+        super._beforeTokenTransfer(from, to, tokenId);
+    }
+
+     function _validateCallerIsProfileOwnerOrDispatcher(uint256 profileId)
+        internal
+        view
+    {
+        if (
+            msg.sender == ownerOf(profileId) ||
+            msg.sender == _dispatcherByProfile[profileId]
+        ) {
+            return;
+        }
+        revert Errors.NotProfileOwnerOrDispatcher();
+    }
+
+     function _validateCallerIsProfileOwner(uint256 profileId) internal view {
+        if (msg.sender != ownerOf(profileId)) revert Errors.NotProfileOwner();
+    }
+
+      function _validateCallerIsGovernance() internal view {
+        if (msg.sender != _governance) revert Errors.NotGovernance();
+    }
+
+
+    function getRevision() internal pure virtual override returns (uint256) {
+        return REVISION;
+    }
+
 
 
 
